@@ -15,6 +15,7 @@ MAP_SIZE = ["650", "450"]
 DEFAULT_MAP_CENTER = ["0", "0"]
 DEFAULT_ZOOM = "1"
 MAP_STEP = 5
+TYPE_MARK = 'pm2rdl'
 
 
 class MainWindow(QMainWindow):
@@ -25,16 +26,19 @@ class MainWindow(QMainWindow):
         self.geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
         self.geocoder_api_key = "40d1649f-0493-4b70-98ba-98533de7710b"
         self.map_api_server = "http://static-maps.yandex.ru/1.x/"
+        self.search_api_server = "https://search-maps.yandex.ru/v1/"
+        self.search_api_key = "dda3ddba-c9ea-4ead-9010-f43fbc15c6e3"
 
         self.map_params = dict()
         self.set_default_values()
         self.press_del_button()
 
-        self.show_postal_code = self.postalcode_checkBox.isChecked()
         self.postalcode_checkBox.stateChanged.connect(self.is_show_postal_code)
         self.type_map_comboBox.activated[str].connect(self.update_map_type)
         self.search_btn.clicked.connect(self.press_search_button)
         self.del_btn.clicked.connect(self.press_del_button)
+
+        self.show_postal_code = self.postalcode_checkBox.isChecked()
 
         self.map_file = self.getImage()
         self.initUI()
@@ -109,6 +113,7 @@ class MainWindow(QMainWindow):
         self.output_textBrowser.setText(
             toponym_address + "\nИмеет координаты:" +
             toponym_coodrinates + toponym_postal_code)
+        self.find_obj_on_map(toponym)
 
     def press_del_button(self):
         self.search_lineEdit.setText('')
@@ -120,7 +125,7 @@ class MainWindow(QMainWindow):
         self.show_postal_code = \
             self.postalcode_checkBox.isChecked()
         if self.last_request:
-            self.press_search_button(get_last_result=True)
+            self.press_search_button()
 
     # Keyboard events.
 
@@ -170,6 +175,12 @@ class MainWindow(QMainWindow):
         self.map_file = self.getImage()
         self.display_map_label.setPixmap(QPixmap(self.map_file))
         self.scale_value_label.setText(self.map_params['z'])
+
+    def find_obj_on_map(self, toponym):
+        self.map_params['ll'] = toponym['Point']['pos'].replace(' ', ',')
+        self.map_params['spn'] = ','.join(self.get_spn(toponym))
+        self.map_params['pt'] = f"{self.map_params['ll']},{TYPE_MARK}"
+        self.update_map()
 
     def set_default_values(self):
         self.map_params = {"ll": ",".join(DEFAULT_MAP_CENTER),
