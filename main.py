@@ -14,13 +14,12 @@ from PyQt5 import uic
 MAP_SIZE = ["650", "450"]
 DEFAULT_MAP_CENTER = ["0", "0"]
 DEFAULT_ZOOM = "1"
-MAP_STEP = 5
 TYPE_MARK = 'pm2rdl'
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
-        super(MainWindow, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(MainWindow, self).__init__(*args, **kwargs)
         uic.loadUi('form.ui', self)
 
         self.geocoder_api_server = "http://geocode-maps.yandex.ru/1.x/"
@@ -31,14 +30,14 @@ class MainWindow(QMainWindow):
 
         self.map_params = dict()
         self.set_default_values()
-        self.press_del_button()
 
-        self.postalcode_checkBox.stateChanged.connect(self.is_show_postal_code)
+        self.postalcode_checkBox.stateChanged.connect(self.show_postal_code)
         self.type_map_comboBox.activated[str].connect(self.update_map_type)
         self.search_btn.clicked.connect(self.press_search_button)
         self.del_btn.clicked.connect(self.press_del_button)
+        self.del_btn.click()  # clear current parameters
 
-        self.show_postal_code = self.postalcode_checkBox.isChecked()
+        self.cur_postal_code = False
 
         self.map_file = self.getImage()
         self.initUI()
@@ -94,38 +93,39 @@ class MainWindow(QMainWindow):
         search_request = self.search_lineEdit.text()
 
         toponym = self.get_geocoder_result(search_request)
-        self.last_request = search_request
-        if not toponym:
-            return
+        # self.show_result_frame(True)
 
-        toponym_address = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
-        toponym_coodrinates = toponym["Point"]["pos"]
-        toponym_postal_code = ''
-        if self.show_postal_code:
-            toponym_postal_code = toponym['metaDataProperty'][
-                'GeocoderMetaData']['Address']
-            if 'postal_code' in toponym_postal_code.keys():
-                toponym_postal_code = toponym_postal_code["postal_code"]
-            else:
-                toponym_postal_code = 'None'
-            toponym_postal_code = f"\nPost code: {toponym_postal_code}"
+        self.cur_postal_code = False
+        if not isinstance(toponym, int):
+            toponym_address = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
+            toponym_coodrinates = toponym["Point"]["pos"]
+            toponym_postal_code = toponym['metaDataProperty']['GeocoderMetaData']['Address']
+            if self.postalcode_checkBox.isChecked():
+                self.cur_postal_code = "\nPost code: -"
+                if 'postal_code' in toponym_postal_code.keys():
+                    self.cur_postal_code = f"\nPost code: {toponym_postal_code['postal_code']}"
 
-        self.output_textBrowser.setText(
-            toponym_address + "\nИмеет координаты:" +
-            toponym_coodrinates + toponym_postal_code)
-        self.find_obj_on_map(toponym)
+            self.output_textBrowser.setText(
+                toponym_address + "\nИмеет координаты:" +
+                toponym_coodrinates + (self.cur_postal_code if self.cur_postal_code else ''))
+            self.find_obj_on_map(toponym)
 
     def press_del_button(self):
+        # self.show_result_frame(False)
         self.search_lineEdit.setText('')
         self.output_textBrowser.setText('')
         self.set_default_values()
+        self.cur_postal_code = False
         self.update_map()
 
-    def is_show_postal_code(self):
-        self.show_postal_code = \
-            self.postalcode_checkBox.isChecked()
-        if self.last_request:
-            self.press_search_button()
+    def show_postal_code(self):
+        if isinstance(self.cur_postal_code, str):
+            if self.postalcode_checkBox.isChecked():
+                self.output_textBrowser.setText(
+                    self.output_textBrowser.toPlainText() + self.cur_postal_code)
+            else:
+                self.output_textBrowser.setText(
+                    '\n'.join(self.output_textBrowser.toPlainText().split('\n')[:-1]))
 
     # Keyboard events.
 
@@ -139,15 +139,18 @@ class MainWindow(QMainWindow):
             self.reduce_map()
 
         # Moving around the map.
+        map_step = 90 / 2 ** int(self.map_params['z'])
         cur_lon, cur_lat = self.map_params['ll'].split(',')
         if event.key() in [Qt.Key_Up, Qt.Key_W]:
-            self.set_map_center(float(cur_lon), float(cur_lat) + MAP_STEP)
+            self.set_map_center(float(cur_lon), float(cur_lat) + map_step)
         elif event.key() in [Qt.Key_Down, Qt.Key_S]:
-            self.set_map_center(float(cur_lon), float(cur_lat) - MAP_STEP)
+            self.set_map_center(float(cur_lon), float(cur_lat) - map_step)
         elif event.key() in [Qt.Key_Right, Qt.Key_D]:
-            self.set_map_center(float(cur_lon) + MAP_STEP, float(cur_lat))
+            self.set_map_center(float(cur_lon) + map_step, float(cur_lat))
         elif event.key() in [Qt.Key_Left, Qt.Key_A]:
-            self.set_map_center(float(cur_lon) - MAP_STEP, float(cur_lat))
+            self.set_map_center(float(cur_lon) - map_step, float(cur_lat))
+        elif event.key() == Qt.Key_Enter - 1:
+            self.search_btn.click()
         elif event.key() == Qt.Key_P:  # FOR TESTING
             response = requests.get(
                 self.map_api_server,
@@ -159,8 +162,6 @@ class MainWindow(QMainWindow):
                 params=self.map_params)
             Image.open(BytesIO(
                 response.content)).show()
-        elif event.key() == Qt.Key_Enter - 1:
-            self.search_btn.click()
 
     # Mouse events.
 
@@ -168,6 +169,13 @@ class MainWindow(QMainWindow):
         event_map_pos = self.display_map_label.mapFromGlobal(QCursor.pos())
         print(event_map_pos.x(), event_map_pos.y())
         print(event.button())
+
+    # Result frame actions
+
+    def show_result_frame(self, is_show):
+        self.results_label.setVisible(is_show)
+        self.output_textBrowser.setVisible(is_show)
+        self.postalcode_checkBox.setVisible(is_show)
 
     # Map actions
 
@@ -178,7 +186,6 @@ class MainWindow(QMainWindow):
 
     def find_obj_on_map(self, toponym):
         self.map_params['ll'] = toponym['Point']['pos'].replace(' ', ',')
-        self.map_params['spn'] = ','.join(self.get_spn(toponym))
         self.map_params['pt'] = f"{self.map_params['ll']},{TYPE_MARK}"
         self.update_map()
 
@@ -196,34 +203,24 @@ class MainWindow(QMainWindow):
         self.update_map()
 
     def set_map_center(self, lon, lat):
-        if -180 <= lon <= 180 and -90 <= lat <= 90:
+        lon = (180 + lon) if lon < -90 else \
+            (-180 + lon) if lon > 90 else lon
+        if -180 < lon < 180 and -90 < lat < 90:
             self.map_params['ll'] = \
                 ",".join([str(lon), str(lat)])
             self.update_map()
 
-    def set_spn(self, lon_delta, lat_delta):
-        self.map_params['spn'] = \
-            ",".join([str(lon_delta), str(lat_delta)])
-        self.update_map()
-
     def increase_map(self):
-        self.map_params['z'] = str((int(self.map_params['z']) + 1) % 18)
+        self.map_params['z'] = \
+            str((int(self.map_params['z']) + 1) % 18)
         self.update_map()
 
     def reduce_map(self):
-        if int(self.map_params['z']):
-            self.map_params['z'] = \
-                str((int(self.map_params['z']) - 1) % 18)
-            self.update_map()
+        self.map_params['z'] = \
+            str((int(self.map_params['z']) - 1) % 18)
+        self.update_map()
 
     # Get params.
-
-    def get_spn(self, toponym):
-        lower_corner, upper_corner = [v.split() for v in toponym[
-            "boundedBy"]["Envelope"].values()]
-        lon_delta = float(upper_corner[0]) - float(lower_corner[0])
-        lat_delta = float(upper_corner[1]) - float(lower_corner[1])
-        return str(lon_delta), str(lat_delta)
 
     def get_map_step(self, toponym):
         pass
