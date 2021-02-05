@@ -4,7 +4,7 @@ ____
  - :white_check_mark: 2 пункт ТЗ
  - :white_check_mark: 3 пункт ТЗ
  - :white_check_mark: 4 пункт ТЗ
- - :black_square_button: не отображается карта sat(4 ТЗ)
+ - :white_check_mark: не отображается карта sat(4 ТЗ)
  - :white_check_mark: 5 пункт ТЗ
  - :white_check_mark: 6 пункт ТЗ
  - :white_check_mark: 7 пункт ТЗ
