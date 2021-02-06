@@ -15,6 +15,7 @@ MAP_SIZE = ["650", "450"]
 DEFAULT_MAP_CENTER = ["0", "0"]
 DEFAULT_ZOOM = "1"
 TYPE_MARK = 'pm2rdl'
+ORG_MARK = 'comma'
 
 
 class MainWindow(QMainWindow):
@@ -29,6 +30,7 @@ class MainWindow(QMainWindow):
         self.search_api_key = "dda3ddba-c9ea-4ead-9010-f43fbc15c6e3"
 
         self.map_params = dict()
+        self.map_org_params = dict()
         self.set_default_values()
 
         self.postalcode_checkBox.stateChanged.connect(self.show_postal_code)
@@ -72,7 +74,7 @@ class MainWindow(QMainWindow):
 
         if not response:  # handling an error situation
             self.output_textBrowser.setText(
-                "Ошибка выполнения запроса:" + response.url+
+                "Ошибка выполнения запроса:" + response.url +
                 f"Http статус: {response.status_code}(){response.reason}")
             return 0
 
@@ -87,6 +89,30 @@ class MainWindow(QMainWindow):
         toponym = toponym[0]["GeoObject"]
         return toponym
 
+    def get_search_result(self):
+        response = requests.get(
+            self.search_api_server,
+            params=self.map_org_params
+        )
+
+        if not response:  # handling an error situation
+            self.output_textBrowser.setText(
+                "Ошибка выполнения запроса:" + response.url +
+                f"Http статус: {response.status_code}(){response.reason}")
+            return 0
+
+        json_response = response.json()
+        toponym = json_response['features']
+        if toponym:
+            if len(toponym) == 0:
+                self.output_textBrowser.setText(
+                    f"Ближайших организаций нет.")
+                return 0
+            return toponym[0]
+        self.output_textBrowser.setText(
+            f"Ближайших организаций нет.")
+        return 0
+
     # UI
 
     def press_search_button(self):
@@ -96,19 +122,29 @@ class MainWindow(QMainWindow):
         # self.show_result_frame(True)
 
         self.cur_postal_code = False
+        self.show_toponym_info(toponym)
+        self.find_obj_on_map(toponym)
+
+    def show_toponym_info(self, toponym, org=False):
         if not isinstance(toponym, int):
-            toponym_address = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
-            toponym_coodrinates = toponym["Point"]["pos"]
-            toponym_postal_code = toponym['metaDataProperty']['GeocoderMetaData']['Address']
-            if self.postalcode_checkBox.isChecked():
-                self.cur_postal_code = "\nPost code: -"
-                if 'postal_code' in toponym_postal_code.keys():
-                    self.cur_postal_code = f"\nPost code: {toponym_postal_code['postal_code']}"
+            if org:
+                toponym_coordinates = ','.join([str(i) for i in toponym['geometry']['coordinates']])
+                self.map_org_params['text'] = toponym_coordinates
+                toponym_address = f"{toponym['properties']['CompanyMetaData']['name']}.\n" \
+                                  f"Адрес: {toponym['properties']['CompanyMetaData']['address']}"
+                self.cur_postal_code = ""
+            else:
+                toponym_address = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
+                toponym_coordinates = toponym["Point"]["pos"]
+                toponym_postal_code = toponym['metaDataProperty']['GeocoderMetaData']['Address']
+                if self.postalcode_checkBox.isChecked():
+                    self.cur_postal_code = "\nPost code: -"
+                    if 'postal_code' in toponym_postal_code.keys():
+                        self.cur_postal_code = f"\nPost code: {toponym_postal_code['postal_code']}"
 
             self.output_textBrowser.setText(
-                toponym_address + "\nИмеет координаты:" +
-                toponym_coodrinates + (self.cur_postal_code if self.cur_postal_code else ''))
-            self.find_obj_on_map(toponym)
+                toponym_address + "\nИмеет координаты: " +
+                toponym_coordinates + (self.cur_postal_code if self.cur_postal_code else ''))
 
     def press_del_button(self):
         # self.show_result_frame(False)
@@ -130,8 +166,6 @@ class MainWindow(QMainWindow):
     # Keyboard events.
 
     def keyPressEvent(self, event):
-        print(event.key(), Qt.Key_Enter)
-
         # Zoom events.
         if event.key() == Qt.Key_PageDown:
             self.increase_map()
@@ -167,8 +201,10 @@ class MainWindow(QMainWindow):
 
     def mousePressEvent(self, event):
         event_map_pos = self.display_map_label.mapFromGlobal(QCursor.pos())
-        print(event_map_pos.x(), event_map_pos.y())
-        print(event.button())
+        if event.button() == 1:
+            self.search_object_by_click(event_map_pos.x(), event_map_pos.y())
+        elif event.button() == 2:
+            self.search_org_by_click(event_map_pos.x(), event_map_pos.y())
 
     # Result frame actions
 
@@ -194,6 +230,67 @@ class MainWindow(QMainWindow):
                            "l": self.type_map_comboBox.currentText(),
                            "size": ",".join(MAP_SIZE),
                            "z": DEFAULT_ZOOM}
+
+        self.map_org_params = {"lang": "ru-RU",
+                               "apikey": self.search_api_key,
+                               "text": self.map_params['ll'],
+                               "ll": self.map_params['ll'],
+                               "results": 1,
+                               "type": "biz",
+                               "spn": "0.0000005, 0.0000005"}
+
+    def calculate_lon_lat(self, x, y):
+        x_coef = 0.55384615384521762582
+        y_coef = 0.40000000000000002220
+        zoom_coef = pow(2, int(self.map_params['z']) - 1)
+
+        if x in range(0, 600) and y in range(0, 450):
+            dx, dy = x - int(MAP_SIZE[0]) // 2, int(MAP_SIZE[1]) // 2 - y
+            lon, lat = float(self.map_params['ll'].split(',')[0]) + (dx * x_coef / zoom_coef), \
+                       float(self.map_params['ll'].split(',')[1]) + (dy * y_coef / zoom_coef)
+            if lon > 180:
+                lon -= 180
+            elif lon < -180:
+                lon += 180
+            if lat > 90:
+                lat -= 90
+            elif lat < -90:
+                lat += 90
+            print(f"mpos {x}, {y}\n"
+                  f"cntr {float(self.map_params['ll'].split(',')[0])} "
+                  f"{float(self.map_params['ll'].split(',')[1])}\n"
+                  f"crds {dx} {dy}\nhave {lon} {lat}")
+            return lon, lat
+        return None, None
+
+    def search_object_by_click(self, x, y):
+        lon, lat = self.calculate_lon_lat(x, y)
+        if not (lon is None) and not (lat is None):
+            self.map_params['pt'] = f"{lon},{lat},{TYPE_MARK}"
+            toponym = self.get_geocoder_result(f'{lon},{lat}')
+
+            self.show_toponym_info(toponym)
+
+            self.update_map()
+
+    def search_org_by_click(self, x, y):
+        lon, lat = self.calculate_lon_lat(x, y)
+        if not (lon is None) and not (lat is None):
+            toponym = self.get_geocoder_result(f'{lon},{lat}')
+            toponym_address = toponym["metaDataProperty"]["GeocoderMetaData"]["text"]
+            self.map_org_params['text'] = toponym_address
+            self.map_org_params['ll'] = f"{lon},{lat}"
+
+            toponym = self.get_search_result()
+            self.show_toponym_info(toponym, org=True)
+
+            if self.map_org_params['text'] == toponym_address:
+                self.map_org_params['text'] = self.map_org_params['ll']
+
+            self.map_params['pt'] = f"{self.map_org_params['text']},{ORG_MARK}"
+            self.map_params['ll'] = self.map_org_params['text']
+
+            self.update_map()
 
     # Actions with map parameters.
 

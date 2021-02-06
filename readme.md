@@ -1,3 +1,8 @@
+# Версия 0.4
+Метка появляется, но с небольшой погрешностью.
+ - При создании метки организации (ПКМ) карта центрируется на нее. С обычной меткой (ЛКМ) такого нет.
+ - :white_check_mark: 11 пункт ТЗ 
+ - :white_check_mark: 12 пункт ТЗ
 ____
 # Версия 0.3
  - :white_check_mark: 1 пункт ТЗ
@@ -16,10 +21,10 @@ ____
 ____
 ____
 # Версия 0.2
-:white_check_mark: 1 пункт ТЗ \n
-:white_check_mark: 2 пункт ТЗ \n
-:black_square_button: 3 пункт ТЗ \n
-:black_square_button: 4 пункт ТЗ \n
+ - :white_check_mark: 1 пункт ТЗ
+ - :white_check_mark: 2 пункт ТЗ
+ - :black_square_button: 3 пункт ТЗ
+ - :black_square_button: 4 пункт ТЗ
 ____
 ____
 # Версия 0.1
