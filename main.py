@@ -15,6 +15,7 @@ MAP_SIZE = ["650", "450"]
 DEFAULT_MAP_CENTER = ["0", "0"]
 DEFAULT_ZOOM = "1"
 TYPE_MARK = 'pm2rdl'
+ZOOM_BORDER_DICT = {"sat": 14, "map": 22, "skl": 24}
 ORG_MARK = 'comma'
 
 
@@ -37,6 +38,7 @@ class MainWindow(QMainWindow):
         self.type_map_comboBox.activated[str].connect(self.update_map_type)
         self.search_btn.clicked.connect(self.press_search_button)
         self.del_btn.clicked.connect(self.press_del_button)
+
         self.del_btn.click()  # clear current parameters
 
         self.cur_postal_code = False
@@ -61,6 +63,13 @@ class MainWindow(QMainWindow):
         map_file = "map.png"
         with open(map_file, "wb") as file:
             file.write(response.content)
+
+        if 'sat' in self.map_params['l']:
+            # Load image
+            im = Image.open(map_file)
+            # Convert to palette mode and save
+            im.convert('P').save(map_file)
+
         return map_file
 
     # Search API actions
@@ -150,8 +159,11 @@ class MainWindow(QMainWindow):
         # self.show_result_frame(False)
         self.search_lineEdit.setText('')
         self.output_textBrowser.setText('')
+
+        # self.show_result_frame(False)
         self.set_default_values()
         self.cur_postal_code = False
+
         self.update_map()
 
     def show_postal_code(self):
@@ -166,6 +178,7 @@ class MainWindow(QMainWindow):
     # Keyboard events.
 
     def keyPressEvent(self, event):
+        print(self.map_params['ll'], 'Key:', event.key())
         # Zoom events.
         if event.key() == Qt.Key_PageDown:
             self.increase_map()
@@ -173,7 +186,7 @@ class MainWindow(QMainWindow):
             self.reduce_map()
 
         # Moving around the map.
-        map_step = 90 / 2 ** int(self.map_params['z'])
+        map_step = 55 / 2 ** int(self.map_params['z'])
         cur_lon, cur_lat = self.map_params['ll'].split(',')
         if event.key() in [Qt.Key_Up, Qt.Key_W]:
             self.set_map_center(float(cur_lon), float(cur_lat) + map_step)
@@ -295,32 +308,30 @@ class MainWindow(QMainWindow):
     # Actions with map parameters.
 
     def update_map_type(self):
-        self.map_params['l'] = \
-            self.type_map_comboBox.currentText()
+        self.map_params['l'] = self.type_map_comboBox.currentText()
+        border = ZOOM_BORDER_DICT[self.map_params['l']]
+        self.map_params['z'] = str((int(self.map_params['z'])) % border)
         self.update_map()
 
     def set_map_center(self, lon, lat):
-        lon = (180 + lon) if lon < -90 else \
-            (-180 + lon) if lon > 90 else lon
-        if -180 < lon < 180 and -90 < lat < 90:
+        lon = (360 + lon) if lon < -180 else \
+            (-360 + lon) if lon > 180 else lon
+        if -180 <= lon <= 180 and -90 < lat < 90:
             self.map_params['ll'] = \
                 ",".join([str(lon), str(lat)])
             self.update_map()
 
     def increase_map(self):
+        border = ZOOM_BORDER_DICT[self.map_params['l']]
         self.map_params['z'] = \
-            str((int(self.map_params['z']) + 1) % 18)
+            str((int(self.map_params['z']) + 1) % border)
         self.update_map()
 
     def reduce_map(self):
+        border = ZOOM_BORDER_DICT[self.map_params['l']]
         self.map_params['z'] = \
-            str((int(self.map_params['z']) - 1) % 18)
+            str((int(self.map_params['z']) - 1) % border)
         self.update_map()
-
-    # Get params.
-
-    def get_map_step(self, toponym):
-        pass
 
     # Close.
 
